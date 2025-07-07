@@ -30,7 +30,7 @@ def init_swanlab(args: Arguments) -> None:
         raise RuntimeError('Cannot import swanlab. Please install it with command: \n pip install swanlab')
     os.environ['SWANLAB_LOG_DIR'] = args.outputs_dir
     if not args.swanlab_api_key == 'local':
-        swanlab.login(api_key=args.swanlab_api_key)
+        swanlab.login(api_key=args.swanlab_api_key, host=args.swanlab_host, web_host=args.swanlab_web_host, save=args.swanlab_save)
     current_time = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
     name = args.name if args.name else f'{args.model_id}_{current_time}'
     swanlab.config.update({'framework': '📏evalscope'})

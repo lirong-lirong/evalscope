@@ -37,6 +37,9 @@ class Arguments(BaseArgument):
     debug: bool = False  # Debug mode
     wandb_api_key: Optional[str] = None  # WandB API key for logging
     swanlab_api_key: Optional[str] = None  # SwanLab API key for logging
+    swanlab_host: Optional[str] = None  # SwanLab host address
+    swanlab_web_host: Optional[str] = None  # SwanLab web host address
+    swanlab_save: bool = False  # Whether to save the SwanLab run
     name: Optional[str] = None  # Name for the run
 
     # Output settings
@@ -148,6 +151,9 @@ def add_argument(parser: argparse.ArgumentParser):
     parser.add_argument('--debug', action='store_true', default=False, help='Debug request send')
     parser.add_argument('--wandb-api-key', type=str, default=None, help='The wandb API key')
     parser.add_argument('--swanlab-api-key', type=str, default=None, help='The swanlab API key')
+    parser.add_argument('--swanlab-host', type=str, default=None, help='The swanlab host address')
+    parser.add_argument('--swanlab-web-host', type=str, default=None, help='The swanlab web host address')
+    parser.add_argument('--swanlab-save', action='store_true', default=False, help='Whether to save the SwanLab run')
     parser.add_argument('--name', type=str, help='The wandb/swanlab db result name and result db name')
 
     # Prompt settings
