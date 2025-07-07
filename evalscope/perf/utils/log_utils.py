@@ -46,3 +46,46 @@ def init_swanlab(args: Arguments) -> None:
         init_kwargs['workspace'] = workspace
 
     swanlab.init(**init_kwargs)
+
+
+def init_prometheus(args: Arguments):
+    try:
+        from prometheus_client import CollectorRegistry, Gauge
+    except ImportError:
+        raise RuntimeError('Cannot import prometheus_client. Please install it with command: \n pip install prometheus_client')
+
+    registry = CollectorRegistry()
+
+    # Define metrics
+    latency_gauge = Gauge(
+        'evalscope_perf_latency_seconds',
+        'Request latency in seconds',
+        ['model', 'parallel', 'number', 'dataset', 'api', 'ep', 'dp', 'tp', 'pd'],
+        registry=registry
+    )
+    throughput_gauge = Gauge(
+        'evalscope_perf_throughput_qps',
+        'Requests per second (throughput)',
+        ['model', 'parallel', 'number', 'dataset', 'api', 'ep', 'dp', 'tp', 'pd'],
+        registry=registry
+    )
+    error_rate_gauge = Gauge(
+        'evalscope_perf_error_rate',
+        'Error rate of requests',
+        ['model', 'parallel', 'number', 'dataset', 'api', 'ep', 'dp', 'tp', 'pd'],
+        registry=registry
+    )
+    duration_gauge = Gauge(
+        'evalscope_perf_duration_seconds',
+        'Duration of the benchmark run in seconds',
+        ['model', 'parallel', 'number', 'dataset', 'api', 'start_timestamp', 'end_timestamp', 'ep', 'dp', 'tp', 'pd'],
+        registry=registry
+    )
+
+    return {
+        'registry': registry,
+        'latency_gauge': latency_gauge,
+        'throughput_gauge': throughput_gauge,
+        'error_rate_gauge': error_rate_gauge,
+        'duration_gauge': duration_gauge,
+    }

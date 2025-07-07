@@ -38,7 +38,72 @@ def run_one_benchmark(args: Arguments, output_path: str = None):
     if platform.system() != 'Windows':
         add_signal_handlers(loop)
 
-    return loop.run_until_complete(benchmark(args))
+    start_timestamp = time.time()
+    metrics_result = loop.run_until_complete(benchmark(args))
+    end_timestamp = time.time()
+
+    # Push metrics to Prometheus if enabled
+    if args.enable_prometheus_metrics:
+        from evalscope.perf.utils.log_utils import init_prometheus
+        prometheus_metrics = init_prometheus(args)
+        _push_metrics_to_prometheus(args, metrics_result, prometheus_metrics, start_timestamp, end_timestamp)
+
+    return metrics_result
+
+
+def _push_metrics_to_prometheus(args: Arguments, metrics_result: dict, prometheus_metrics: dict, start_timestamp: float, end_timestamp: float):
+    if not args.enable_prometheus_metrics or not args.prometheus_pushgateway_url:
+        return
+
+    try:
+        from prometheus_client import push_to_gateway
+    except ImportError:
+        logger.error('prometheus_client is not installed. Cannot push metrics to Pushgateway.')
+        return
+
+    registry = prometheus_metrics['registry']
+    latency_gauge = prometheus_metrics['latency_gauge']
+    throughput_gauge = prometheus_metrics['throughput_gauge']
+    error_rate_gauge = prometheus_metrics['error_rate_gauge']
+    duration_gauge = prometheus_metrics['duration_gauge']
+
+    # Extract common labels
+    labels = {
+        'model': args.model_id,
+        'parallel': str(args.parallel),
+        'number': str(args.number),
+        'dataset': args.dataset,
+        'api': args.api,
+        'start_timestamp': str(int(start_timestamp)),
+        'end_timestamp': str(int(end_timestamp)),
+    }
+
+    # Add custom parameters if they exist
+    if args.ep is not None:
+        labels['ep'] = str(args.ep)
+    if args.dp is not None:
+        labels['dp'] = str(args.dp)
+    if args.tp is not None:
+        labels['tp'] = str(args.tp)
+    if args.pd is not None:
+        labels['pd'] = args.pd
+
+    # Set metric values
+    if 'latency_avg' in metrics_result:
+        latency_gauge.labels(**labels).set(metrics_result['latency_avg'])
+    if 'qps' in metrics_result:
+        throughput_gauge.labels(**labels).set(metrics_result['qps'])
+    if 'error_rate' in metrics_result:
+        error_rate_gauge.labels(**labels).set(metrics_result['error_rate'])
+
+    duration = end_timestamp - start_timestamp
+    duration_gauge.labels(**labels).set(duration)
+
+    try:
+        push_to_gateway(args.prometheus_pushgateway_url, job=args.prometheus_job_name, registry=registry)
+        logger.info(f"Successfully pushed metrics to Prometheus Pushgateway: {args.prometheus_pushgateway_url}")
+    except Exception as e:
+        logger.error(f"Failed to push metrics to Prometheus Pushgateway: {e}")
 
 
 def run_multi_benchmark(args: Arguments, output_path: str = None):

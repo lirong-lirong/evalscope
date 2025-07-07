@@ -73,6 +73,17 @@ class Arguments(BaseArgument):
     top_k: Optional[int] = None  # Top-k sampling setting for the response
     extra_args: Optional[Dict[str, Any]] = None  # Extra arguments
 
+    # Custom parameters for distributed training / parallelism
+    ep: Optional[int] = None  # Example: Epochs
+    dp: Optional[int] = None  # Example: Data Parallelism
+    tp: Optional[int] = None  # Example: Tensor Parallelism
+    pd: Optional[str] = None  # Example: Parallelism Distribution strategy
+
+    # Prometheus settings
+    prometheus_pushgateway_url: Optional[str] = None  # URL for Prometheus Pushgateway
+    enable_prometheus_metrics: bool = False  # Enable pushing metrics to Prometheus Pushgateway
+    prometheus_job_name: str = 'evalscope_perf'  # Job name for Prometheus metrics
+
     def __post_init__(self):
         # Set the default headers
         self.headers = self.headers or {}  # Default to empty dictionary
@@ -189,6 +200,17 @@ def add_argument(parser: argparse.ArgumentParser):
     parser.add_argument('--top-p', type=float, help='Sampling top p', default=None)
     parser.add_argument('--top-k', type=int, help='Sampling top k', default=None)
     parser.add_argument('--extra-args', type=json.loads, default='{}', help='Extra arguments, should in JSON format',)
+
+    # Custom parameters for distributed training / parallelism
+    parser.add_argument('--ep', type=int, default=None, help='Custom parameter: Epochs')
+    parser.add_argument('--dp', type=int, default=None, help='Custom parameter: Data Parallelism')
+    parser.add_argument('--tp', type=int, default=None, help='Custom parameter: Tensor Parallelism')
+    parser.add_argument('--pd', type=str, default=None, help='Custom parameter: Parallelism Distribution strategy')
+
+    # Prometheus settings
+    parser.add_argument('--prometheus-pushgateway-url', type=str, default=None, help='URL for Prometheus Pushgateway')
+    parser.add_argument('--enable-prometheus-metrics', action='store_true', default=False, help='Enable pushing metrics to Prometheus Pushgateway')
+    parser.add_argument('--prometheus-job-name', type=str, default='evalscope_perf', help='Job name for Prometheus metrics')
     # yapf: enable
 
 

@@ -8,3 +8,4 @@ sse_starlette
 # for tokenizer
 transformers
 uvicorn
+prometheus_client
