@@ -55,36 +55,35 @@ def init_prometheus(args: Arguments):
         raise RuntimeError('Cannot import prometheus_client. Please install it with command: \n pip install prometheus_client')
 
     registry = CollectorRegistry()
-    # Add 'metadata' for unique identification of each test run
-    base_labels = ['model', 'parallel', 'number', 'dataset', 'api', 'ep', 'dp', 'tp', 'pd', 'metadata']
+    base_labels = ['model', 'concurrency', 'dataset', 'ep', 'dp', 'tp', 'pd', 'metadata']
 
     # --- Core Performance Metrics (Gauges) ---
     requests_per_second = Gauge(
-        'evalscope_requests_per_second',
+        'requests_per_second',
         'Request throughput (req/s).',
         base_labels,
         registry=registry
     )
     latency_avg_seconds = Gauge(
-        'evalscope_latency_seconds_avg',
+        'latency_seconds_avg',
         'Average request latency in seconds.',
         base_labels,
         registry=registry
     )
     ttft_avg_seconds = Gauge(
-        'evalscope_ttft_seconds_avg',
+        'ttft_seconds_avg',
         'Average time to first token in seconds.',
         base_labels,
         registry=registry
     )
     output_tokens_per_second = Gauge(
-        'evalscope_output_tokens_per_second',
+        'output_tokens_per_second',
         'Output token throughput (tok/s).',
         base_labels,
         registry=registry
     )
     total_tokens_per_second = Gauge(
-        'evalscope_total_tokens_per_second',
+        'total_tokens_per_second',
         'Total token throughput (tok/s), including prompt tokens.',
         base_labels,
         registry=registry
@@ -92,25 +91,25 @@ def init_prometheus(args: Arguments):
 
     # --- Key Statistical Data (Gauges) ---
     duration_seconds = Gauge(
-        'evalscope_duration_seconds',
+        'duration_seconds',
         'Duration of the benchmark run in seconds.',
         base_labels + ['start_timestamp', 'end_timestamp'],
         registry=registry
     )
     input_tokens_avg = Gauge(
-        'evalscope_input_tokens_per_request_avg',
+        'input_tokens_per_request_avg',
         'Average input tokens per request.',
         base_labels,
         registry=registry
     )
     output_tokens_avg = Gauge(
-        'evalscope_output_tokens_per_request_avg',
+        'output_tokens_per_request_avg',
         'Average output tokens per request.',
         base_labels,
         registry=registry
     )
     error_rate_gauge = Gauge(
-        'evalscope_error_rate',
+        'error_rate',
         'Error rate of requests.',
         base_labels,
         registry=registry
@@ -118,7 +117,7 @@ def init_prometheus(args: Arguments):
 
     # --- Percentile Metrics (Gauge with quantile label) ---
     latency_percentiles = Gauge(
-        'evalscope_latency_seconds',
+        'latency_seconds',
         'Request latency percentiles in seconds.',
         base_labels + ['quantile'],
         registry=registry
@@ -126,11 +125,46 @@ def init_prometheus(args: Arguments):
 
     # --- Failure Counter ---
     requests_failed_total = Counter(
-        'evalscope_requests_failed_total',
+        'requests_failed_total',
         'Total number of failed requests.',
         base_labels,
         registry=registry
     )
+
+    # --- NEW: Additional Metrics from benchmark_util.py (Gauges) ---
+    avg_time_per_output_token = Gauge(
+        'avg_time_per_output_token_seconds',
+        'Average time per output token in seconds.',
+        base_labels,
+        registry=registry
+    )
+    avg_package_latency = Gauge(
+        'avg_package_latency_seconds',
+        'Average package latency in seconds.',
+        base_labels,
+        registry=registry
+    )
+    avg_package_per_request = Gauge(
+        'avg_package_per_request',
+        'Average number of packages per request.',
+        base_labels,
+        registry=registry
+    )
+
+    # --- NEW: Total Request Counters ---
+    total_requests_counter = Counter(
+        'total_requests_total',
+        'Total number of requests.',
+        base_labels,
+        registry=registry
+    )
+    succeed_requests_counter = Counter(
+        'succeed_requests_total',
+        'Total number of succeed requests.',
+        base_labels,
+        registry=registry
+    )
+
 
     return {
         'registry': registry,
@@ -145,4 +179,10 @@ def init_prometheus(args: Arguments):
         'error_rate_gauge': error_rate_gauge,
         'latency_percentiles': latency_percentiles,
         'requests_failed_total': requests_failed_total,
+        # NEW metrics
+        'avg_time_per_output_token': avg_time_per_output_token,
+        'avg_package_latency': avg_package_latency,
+        'avg_package_per_request': avg_package_per_request,
+        'total_requests_counter': total_requests_counter,
+        'succeed_requests_counter': succeed_requests_counter,
     }
