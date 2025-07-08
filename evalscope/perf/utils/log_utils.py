@@ -50,42 +50,99 @@ def init_swanlab(args: Arguments) -> None:
 
 def init_prometheus(args: Arguments):
     try:
-        from prometheus_client import CollectorRegistry, Gauge
+        from prometheus_client import CollectorRegistry, Counter, Gauge
     except ImportError:
         raise RuntimeError('Cannot import prometheus_client. Please install it with command: \n pip install prometheus_client')
 
     registry = CollectorRegistry()
+    # Add 'metadata' for unique identification of each test run
+    base_labels = ['model', 'parallel', 'number', 'dataset', 'api', 'ep', 'dp', 'tp', 'pd', 'metadata']
 
-    # Define metrics
-    latency_gauge = Gauge(
-        'evalscope_perf_latency_seconds',
-        'Request latency in seconds',
-        ['model', 'parallel', 'number', 'dataset', 'api', 'ep', 'dp', 'tp', 'pd'],
+    # --- Core Performance Metrics (Gauges) ---
+    requests_per_second = Gauge(
+        'evalscope_requests_per_second',
+        'Request throughput (req/s).',
+        base_labels,
         registry=registry
     )
-    throughput_gauge = Gauge(
-        'evalscope_perf_throughput_qps',
-        'Requests per second (throughput)',
-        ['model', 'parallel', 'number', 'dataset', 'api', 'ep', 'dp', 'tp', 'pd'],
+    latency_avg_seconds = Gauge(
+        'evalscope_latency_seconds_avg',
+        'Average request latency in seconds.',
+        base_labels,
+        registry=registry
+    )
+    ttft_avg_seconds = Gauge(
+        'evalscope_ttft_seconds_avg',
+        'Average time to first token in seconds.',
+        base_labels,
+        registry=registry
+    )
+    output_tokens_per_second = Gauge(
+        'evalscope_output_tokens_per_second',
+        'Output token throughput (tok/s).',
+        base_labels,
+        registry=registry
+    )
+    total_tokens_per_second = Gauge(
+        'evalscope_total_tokens_per_second',
+        'Total token throughput (tok/s), including prompt tokens.',
+        base_labels,
+        registry=registry
+    )
+
+    # --- Key Statistical Data (Gauges) ---
+    duration_seconds = Gauge(
+        'evalscope_duration_seconds',
+        'Duration of the benchmark run in seconds.',
+        base_labels + ['start_timestamp', 'end_timestamp'],
+        registry=registry
+    )
+    input_tokens_avg = Gauge(
+        'evalscope_input_tokens_per_request_avg',
+        'Average input tokens per request.',
+        base_labels,
+        registry=registry
+    )
+    output_tokens_avg = Gauge(
+        'evalscope_output_tokens_per_request_avg',
+        'Average output tokens per request.',
+        base_labels,
         registry=registry
     )
     error_rate_gauge = Gauge(
-        'evalscope_perf_error_rate',
-        'Error rate of requests',
-        ['model', 'parallel', 'number', 'dataset', 'api', 'ep', 'dp', 'tp', 'pd'],
+        'evalscope_error_rate',
+        'Error rate of requests.',
+        base_labels,
         registry=registry
     )
-    duration_gauge = Gauge(
-        'evalscope_perf_duration_seconds',
-        'Duration of the benchmark run in seconds',
-        ['model', 'parallel', 'number', 'dataset', 'api', 'start_timestamp', 'end_timestamp', 'ep', 'dp', 'tp', 'pd'],
+
+    # --- Percentile Metrics (Gauge with quantile label) ---
+    latency_percentiles = Gauge(
+        'evalscope_latency_seconds',
+        'Request latency percentiles in seconds.',
+        base_labels + ['quantile'],
+        registry=registry
+    )
+
+    # --- Failure Counter ---
+    requests_failed_total = Counter(
+        'evalscope_requests_failed_total',
+        'Total number of failed requests.',
+        base_labels,
         registry=registry
     )
 
     return {
         'registry': registry,
-        'latency_gauge': latency_gauge,
-        'throughput_gauge': throughput_gauge,
+        'requests_per_second': requests_per_second,
+        'latency_avg_seconds': latency_avg_seconds,
+        'ttft_avg_seconds': ttft_avg_seconds,
+        'output_tokens_per_second': output_tokens_per_second,
+        'total_tokens_per_second': total_tokens_per_second,
+        'duration_seconds': duration_seconds,
+        'input_tokens_avg': input_tokens_avg,
+        'output_tokens_avg': output_tokens_avg,
         'error_rate_gauge': error_rate_gauge,
-        'duration_gauge': duration_gauge,
+        'latency_percentiles': latency_percentiles,
+        'requests_failed_total': requests_failed_total,
     }

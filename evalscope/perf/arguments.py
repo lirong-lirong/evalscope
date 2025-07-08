@@ -78,6 +78,7 @@ class Arguments(BaseArgument):
     dp: Optional[int] = None  # Example: Data Parallelism
     tp: Optional[int] = None  # Example: Tensor Parallelism
     pd: Optional[str] = None  # Example: Parallelism Distribution strategy
+    metadata: Optional[str] = None
 
     # Prometheus settings
     prometheus_pushgateway_url: Optional[str] = None  # URL for Prometheus Pushgateway
@@ -211,6 +212,7 @@ def add_argument(parser: argparse.ArgumentParser):
     parser.add_argument('--prometheus-pushgateway-url', type=str, default=None, help='URL for Prometheus Pushgateway')
     parser.add_argument('--enable-prometheus-metrics', action='store_true', default=False, help='Enable pushing metrics to Prometheus Pushgateway')
     parser.add_argument('--prometheus-job-name', type=str, default='evalscope_perf', help='Job name for Prometheus metrics')
+    parser.add_argument('--metadata', type=str, default=None, help='A unique identifier for the test run to prevent overwriting metrics (e.g., pipeline run ID)')
     # yapf: enable
 
 

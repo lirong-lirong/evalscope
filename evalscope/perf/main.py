@@ -39,7 +39,7 @@ def run_one_benchmark(args: Arguments, output_path: str = None):
         add_signal_handlers(loop)
 
     start_timestamp = time.time()
-    metrics_result = loop.run_until_complete(benchmark(args))
+    metrics_result, percentile_result = loop.run_until_complete(benchmark(args))
     end_timestamp = time.time()
 
     # Push metrics to Prometheus if enabled
@@ -48,7 +48,7 @@ def run_one_benchmark(args: Arguments, output_path: str = None):
         prometheus_metrics = init_prometheus(args)
         _push_metrics_to_prometheus(args, metrics_result, prometheus_metrics, start_timestamp, end_timestamp)
 
-    return metrics_result
+    return metrics_result, percentile_result
 
 
 def _push_metrics_to_prometheus(args: Arguments, metrics_result: dict, prometheus_metrics: dict, start_timestamp: float, end_timestamp: float):
@@ -62,42 +62,40 @@ def _push_metrics_to_prometheus(args: Arguments, metrics_result: dict, prometheu
         return
 
     registry = prometheus_metrics['registry']
-    latency_gauge = prometheus_metrics['latency_gauge']
-    throughput_gauge = prometheus_metrics['throughput_gauge']
+    latency_gauge = prometheus_metrics['latency_avg_seconds']
+    throughput_gauge = prometheus_metrics['requests_per_second']
     error_rate_gauge = prometheus_metrics['error_rate_gauge']
-    duration_gauge = prometheus_metrics['duration_gauge']
+    duration_gauge = prometheus_metrics['duration_seconds']
 
-    # Extract common labels
-    labels = {
+    # Define base labels, ensuring all optional labels have a default value.
+    base_labels = {
         'model': args.model_id,
         'parallel': str(args.parallel),
         'number': str(args.number),
         'dataset': args.dataset,
         'api': args.api,
-        'start_timestamp': str(int(start_timestamp)),
-        'end_timestamp': str(int(end_timestamp)),
+        'ep': str(args.ep) if args.ep is not None else '',
+        'dp': str(args.dp) if args.dp is not None else '',
+        'tp': str(args.tp) if args.tp is not None else '',
+        'pd': args.pd if args.pd is not None else '',
+        'metadata': args.metadata if args.metadata is not None else '',
     }
 
-    # Add custom parameters if they exist
-    if args.ep is not None:
-        labels['ep'] = str(args.ep)
-    if args.dp is not None:
-        labels['dp'] = str(args.dp)
-    if args.tp is not None:
-        labels['tp'] = str(args.tp)
-    if args.pd is not None:
-        labels['pd'] = args.pd
-
-    # Set metric values
+    # Set metric values for gauges with common labels
     if 'latency_avg' in metrics_result:
-        latency_gauge.labels(**labels).set(metrics_result['latency_avg'])
+        latency_gauge.labels(**base_labels).set(metrics_result['latency_avg'])
     if 'qps' in metrics_result:
-        throughput_gauge.labels(**labels).set(metrics_result['qps'])
+        throughput_gauge.labels(**base_labels).set(metrics_result['qps'])
     if 'error_rate' in metrics_result:
-        error_rate_gauge.labels(**labels).set(metrics_result['error_rate'])
+        error_rate_gauge.labels(**base_labels).set(metrics_result['error_rate'])
+
+    # Create labels for the duration gauge and set its value
+    duration_labels = base_labels.copy()
+    duration_labels['start_timestamp'] = str(int(start_timestamp))
+    duration_labels['end_timestamp'] = str(int(end_timestamp))
 
     duration = end_timestamp - start_timestamp
-    duration_gauge.labels(**labels).set(duration)
+    duration_gauge.labels(**duration_labels).set(duration)
 
     try:
         push_to_gateway(args.prometheus_pushgateway_url, job=args.prometheus_job_name, registry=registry)
@@ -107,7 +105,8 @@ def _push_metrics_to_prometheus(args: Arguments, metrics_result: dict, prometheu
 
 
 def run_multi_benchmark(args: Arguments, output_path: str = None):
-    results = []
+    metric_results = []
+    percentile_results = []
     number_list = copy.deepcopy(args.number)
     parallel_list = copy.deepcopy(args.parallel)
     for i, (number, parallel) in enumerate(zip(number_list, parallel_list)):
@@ -117,16 +116,16 @@ def run_multi_benchmark(args: Arguments, output_path: str = None):
         cur_output_path = os.path.join(output_path, f'parallel_{parallel}_number_{number}')
         os.makedirs(cur_output_path, exist_ok=True)
         # Start the benchmark
-        metrics_result = run_one_benchmark(args, output_path=cur_output_path)
+        metrics_result, percentile_result = run_one_benchmark(args, output_path=cur_output_path)
         # Save the results
-        results.append(metrics_result)
+        metric_results.append((metrics_result, percentile_result))
         # Sleep between runs to avoid overwhelming the server
         if i < len(number_list) - 1:
             logger.info('Sleeping for 5 seconds before the next run...')
             time.sleep(5)
     # Analyze results
-    print_summary(results, args.model_id)
-    return results
+    print_summary(metric_results, args.model_id)
+    return metric_results, percentile_results
 
 
 def run_perf_benchmark(args):
