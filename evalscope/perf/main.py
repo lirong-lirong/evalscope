@@ -16,6 +16,7 @@ from .benchmark import benchmark
 from .utils.db_util import get_output_path
 from .utils.handler import add_signal_handlers
 from .utils.rich_display import print_summary
+from .utils.db_util import save_to_mysql
 from .utils.benchmark_util import Metrics # Import Metrics to use its constants
 
 logger = get_logger()
@@ -23,6 +24,29 @@ logger = get_logger()
 
 # run_one_benchmark no longer needs pipeline_run_id
 def run_one_benchmark(args: Arguments, output_path: str = None, prometheus_metrics: dict = None):
+
+    def _restructure_percentiles(percentile_result: dict) -> dict:
+        if not percentile_result or 'Percentiles' not in percentile_result:
+            return {}
+
+        # Extract percentile labels like ['10', '25', ...]
+        percentile_labels = [p.replace('%', '') for p in percentile_result.get('Percentiles', [])]
+        flat_percentiles = {}
+
+        for key, values in percentile_result.items():
+            if key == 'Percentiles':
+                continue
+            
+            # Sanitize the metric name to be a valid column name component
+            sanitized_key = key.replace(' (s)', '_seconds').replace(' (tok/s)', '_tok_per_s').replace(' ', '_')
+            
+            for i, label in enumerate(percentile_labels):
+                if i < len(values):
+                    flat_key = f"p{label}_{sanitized_key}"
+                    flat_percentiles[flat_key] = values[i]
+
+        return flat_percentiles
+
     if isinstance(args.parallel, list):
         args.parallel = args.parallel[0]
     if isinstance(args.number, list):
@@ -45,9 +69,33 @@ def run_one_benchmark(args: Arguments, output_path: str = None, prometheus_metri
     metrics_result, percentile_result = loop.run_until_complete(benchmark(args))
     end_timestamp = time.time()
 
+    # Define base labels, ensuring all optional labels have a default value.
+    base_labels = {
+        'model': args.model_id,
+        'concurrency': str(args.parallel),
+        'dataset': args.dataset,
+        'ep': str(args.ep) if args.ep is not None else '',
+        'dp': str(args.dp) if args.dp is not None else '',
+        'tp': str(args.tp) if args.tp is not None else '',
+        'pd': args.pd if args.pd is not None else '',
+        'metadata': args.metadata if args.metadata is not None else '',
+    }
+
     # Push metrics to Prometheus if enabled and prometheus_metrics are provided
     if args.enable_prometheus_metrics and prometheus_metrics:
-        _push_metrics_to_prometheus(args, metrics_result, percentile_result, prometheus_metrics, start_timestamp, end_timestamp)
+        _push_metrics_to_prometheus(args, metrics_result, percentile_result, prometheus_metrics, start_timestamp, end_timestamp, base_labels)
+
+    # Save metrics to database if enabled
+    if args.enable_database_push:
+        flat_percentiles = _restructure_percentiles(percentile_result)
+        db_metrics = {
+            **base_labels,
+            **metrics_result,
+            **flat_percentiles,  # Merge the flattened percentile data
+            'start_timestamp': start_timestamp,
+            'end_timestamp': end_timestamp
+        }
+        save_to_mysql(args, db_metrics)
 
     return metrics_result, percentile_result
 
@@ -103,17 +151,7 @@ def _push_metrics_to_prometheus(args: Arguments, metrics_result: dict, percentil
     dynamic_job_name = "".join(c for c in dynamic_job_name if c.isalnum() or c == '_')
 
 
-    # Define base labels, ensuring all optional labels have a default value.
-    base_labels = {
-        'model': args.model_id,
-        'concurrency': str(args.parallel),
-        'dataset': args.dataset,
-        'ep': str(args.ep) if args.ep is not None else '',
-        'dp': str(args.dp) if args.dp is not None else '',
-        'tp': str(args.tp) if args.tp is not None else '',
-        'pd': args.pd if args.pd is not None else '',
-        'metadata': args.metadata if args.metadata is not None else '',
-    }
+    
 
     # Set metric values for gauges with common labels
     if Metrics.REQUEST_THROUGHPUT in metrics_result:

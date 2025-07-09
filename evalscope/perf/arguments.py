@@ -84,6 +84,14 @@ class Arguments(BaseArgument):
     prometheus_pushgateway_url: Optional[str] = None  # URL for Prometheus Pushgateway
     enable_prometheus_metrics: bool = False  # Enable pushing metrics to Prometheus Pushgateway
     prometheus_job_name: str = 'evalscope_perf'  # Job name for Prometheus metrics
+    
+    # database settings
+    enable_database_push: bool = False
+    db_host: Optional[str] = None
+    db_port: Optional[int] = 3036
+    db_user: Optional[str] = None
+    db_password: Optional[str] = None
+    db_name: Optional[str] = None
 
     def __post_init__(self):
         # Set the default headers
@@ -213,6 +221,14 @@ def add_argument(parser: argparse.ArgumentParser):
     parser.add_argument('--enable-prometheus-metrics', action='store_true', default=False, help='Enable pushing metrics to Prometheus Pushgateway')
     parser.add_argument('--prometheus-job-name', type=str, default='evalscope_perf', help='Job name for Prometheus metrics')
     parser.add_argument('--metadata', type=str, default=None, help='A unique identifier for the test run to prevent overwriting metrics (e.g., pipeline run ID)')
+
+    # Database settings
+    parser.add_argument('--enable-database-push', action='store_true', default=False, help='Enable pushing metrics to a database')
+    parser.add_argument('--db-host', type=str, default=None, help='Database host')
+    parser.add_argument('--db-port', type=int, default=3306, help='Database port')
+    parser.add_argument('--db-user', type=str, default=None, help='Database user')
+    parser.add_argument('--db-password', type=str, default=None, help='Database password')
+    parser.add_argument('--db-name', type=str, default=None, help='Database name')
     # yapf: enable
 
 

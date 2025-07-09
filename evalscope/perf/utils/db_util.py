@@ -266,3 +266,108 @@ def speed_benchmark_result(result_db_path: str):
     # Write results to JSON file
     result_path = os.path.dirname(result_db_path)
     write_json_file(data, os.path.join(result_path, 'speed_benchmark.json'))
+
+
+# MySQL specific functions
+def _flatten_dict(data: dict, parent_key: str = '', sep: str = '_') -> dict:
+    """Flatten a nested dictionary."""
+    items = []
+    for k, v in data.items():
+        new_key = parent_key + sep + k if parent_key else k
+        if isinstance(v, dict):
+            items.extend(_flatten_dict(v, new_key, sep=sep).items())
+        else:
+            items.append((new_key, v))
+    return dict(items)
+
+
+def _get_mysql_connection(args: Arguments):
+    """Establishes a connection to the MySQL database."""
+    try:
+        import mysql.connector
+        from mysql.connector import errorcode
+    except ImportError:
+        logger.error("mysql-connector-python is not installed. Please install it via 'pip install mysql-connector-python'")
+        return None
+
+    try:
+        connection = mysql.connector.connect(
+            host=args.db_host,
+            port=args.db_port,
+            user=args.db_user,
+            password=args.db_password,
+            database=args.db_name
+        )
+        return connection
+    except mysql.connector.Error as err:
+        if err.errno == errorcode.ER_ACCESS_DENIED_ERROR:
+            logger.error("Something is wrong with your user name or password")
+        elif err.errno == errorcode.ER_BAD_DB_ERROR:
+            logger.error(f"Database '{args.db_name}' does not exist")
+        else:
+            logger.error(f"Failed to connect to MySQL: {err}")
+        return None
+
+
+def _get_sql_type(value) -> str:
+    """Infers SQL type from a Python value."""
+    if isinstance(value, int):
+        return 'INT'
+    elif isinstance(value, float):
+        return 'FLOAT'
+    elif isinstance(value, str):
+        return 'VARCHAR(255)'
+    else:
+        return 'TEXT'
+
+
+def save_to_mysql(args: Arguments, data: dict):
+    """
+    Saves benchmark data to a MySQL database, creating a new table for each run
+    based on the metadata.
+    """
+    if not args.metadata:
+        logger.error("Cannot save to database: --metadata is required for table naming.")
+        return
+
+    # Sanitize metadata to create a valid table name
+    table_name = re.sub(r'[^0-9a-zA-Z_]', '', args.metadata)
+    if not table_name:
+        logger.error(f"Invalid metadata '{args.metadata}' resulted in an empty table name.")
+        return
+
+    logger.info(f"Attempting to save results to MySQL table: {table_name}")
+
+    connection = _get_mysql_connection(args)
+    if not connection:
+        return
+
+    try:
+        cursor = connection.cursor()
+
+        # Flatten the data for a flat table structure
+        flat_data = _flatten_dict(data)
+
+        # Dynamically create the CREATE TABLE IF NOT EXISTS statement
+        columns_defs = [f"`{col}` {_get_sql_type(val)}" for col, val in flat_data.items()]
+        create_table_sql = f"CREATE TABLE IF NOT EXISTS `{table_name}` ({ ', '.join(columns_defs) })"
+        logger.debug(f"Executing CREATE TABLE: {create_table_sql}")
+        cursor.execute(create_table_sql)
+
+        # Dynamically create the INSERT statement
+        columns = '`, `'.join(flat_data.keys())
+        placeholders = ', '.join(['%s'] * len(flat_data))
+        insert_sql = f"INSERT INTO `{table_name}` (`{columns}`) VALUES ({placeholders})"
+        logger.debug(f"Executing INSERT: {insert_sql}")
+        cursor.execute(insert_sql, list(flat_data.values()))
+
+        connection.commit()
+        logger.info(f"Successfully saved results to MySQL table: `{table_name}` in database `{args.db_name}`")
+
+    except Exception as e:
+        logger.error(f"Failed to save data to MySQL: {e}")
+        connection.rollback()
+    finally:
+        if connection.is_connected():
+            cursor.close()
+            connection.close()

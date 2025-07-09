@@ -9,3 +9,4 @@ sse_starlette
 transformers
 uvicorn
 prometheus_client
+mysql-connector-python
