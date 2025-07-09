@@ -80,6 +80,7 @@ class Arguments(BaseArgument):
     pd: Optional[str] = None  # Example: Parallelism Distribution strategy
     metadata: Optional[str] = None
     engine: Optional[str] = None
+    node_size: Optional[int] = 1
 
     # Prometheus settings
     prometheus_pushgateway_url: Optional[str] = None  # URL for Prometheus Pushgateway
@@ -219,6 +220,7 @@ def add_argument(parser: argparse.ArgumentParser):
     parser.add_argument('--tp', type=int, default=None, help='Custom parameter: Tensor Parallelism')
     parser.add_argument('--pd', type=str, default=None, help='Custom parameter: Parallelism Distribution strategy')
     parser.add_argument('--engine', type=str, default=None, help='Custom parameter: Engine')
+    parser.add_argument('--node-size', type=int, default=1, help='Custom parameter: Node size')
     
     # Prometheus settings
     parser.add_argument('--prometheus-pushgateway-url', type=str, default=None, help='URL for Prometheus Pushgateway')
