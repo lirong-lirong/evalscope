@@ -82,11 +82,12 @@ class Arguments(BaseArgument):
 
     # Prometheus settings
     prometheus_pushgateway_url: Optional[str] = None  # URL for Prometheus Pushgateway
-    enable_prometheus_metrics: bool = False  # Enable pushing metrics to Prometheus Pushgateway
-    prometheus_job_name: str = 'evalscope_perf'  # Job name for Prometheus metrics
+    enable_prometheus_metrics: Optional[bool] = False  # Enable pushing metrics to Prometheus Pushgateway
+    prometheus_job_name: Optional[str] = 'evalscope_perf'  # Job name for Prometheus metrics
+    
     
     # database settings
-    enable_database_push: bool = False
+    enable_database_push: Optional[bool] = False
     db_host: Optional[str] = None
     db_port: Optional[int] = 3036
     db_user: Optional[str] = None
