@@ -321,6 +321,49 @@ def _get_sql_type(value) -> str:
         return 'TEXT'
 
 
+def _restructure_percentiles(percentile_result: dict) -> dict:
+    if not percentile_result or 'Percentiles' not in percentile_result:
+        return {}
+
+    # Extract percentile labels like ['10', '25', ...]
+    percentile_labels = [p.replace('%', '') for p in percentile_result.get('Percentiles', [])]
+    flat_percentiles = {}
+
+    for key, values in percentile_result.items():
+        if key == 'Percentiles':
+            continue
+
+        # Sanitize the metric name to be a valid column name component
+        sanitized_key = key.replace(' (s)', '_seconds').replace(' (tok/s)', '_tok_per_s').replace(' ', '_')
+        
+        for i, label in enumerate(percentile_labels):
+            if i < len(values):
+                flat_key = f"p{label}_{sanitized_key}"
+                flat_percentiles[flat_key] = values[i]
+
+    return flat_percentiles
+
+def save_to_sql(args: Arguments, metrics_result: dict, percentile_result: dict, start_timestamp: float, end_timestamp: float):
+    base_labels = {
+        'model': args.model_id,
+        'concurrency': str(args.parallel),
+        'dataset': args.dataset,
+        'ep': str(args.ep) if args.ep is not None else '',
+        'dp': str(args.dp) if args.dp is not None else '',
+        'tp': str(args.tp) if args.tp is not None else '',
+        'pd': args.pd if args.pd is not None else '',
+        'metadata': args.metadata if args.metadata is not None else '',
+    }
+    flat_percentiles = _restructure_percentiles(percentile_result)
+    db_metrics = {
+        **base_labels,
+        **metrics_result,
+        **flat_percentiles,  # Merge the flattened percentile data
+        'start_timestamp': start_timestamp,
+        'end_timestamp': end_timestamp
+    }
+    save_to_mysql(args, db_metrics)
+    
 def save_to_mysql(args: Arguments, data: dict):
     """
     Saves benchmark data to a MySQL database, creating a new table for each run

@@ -16,7 +16,7 @@ from .benchmark import benchmark
 from .utils.db_util import get_output_path
 from .utils.handler import add_signal_handlers
 from .utils.rich_display import print_summary
-from .utils.db_util import save_to_mysql
+from .utils.db_util import save_to_sql
 from .utils.benchmark_util import Metrics # Import Metrics to use its constants
 
 logger = get_logger()
@@ -69,7 +69,18 @@ def run_one_benchmark(args: Arguments, output_path: str = None, prometheus_metri
     metrics_result, percentile_result = loop.run_until_complete(benchmark(args))
     end_timestamp = time.time()
 
-    # Define base labels, ensuring all optional labels have a default value.
+    # Push metrics to Prometheus if enabled and prometheus_metrics are provided
+    if args.enable_prometheus_metrics and prometheus_metrics:
+        save_to_prometheus(args, metrics_result, percentile_result, prometheus_metrics, start_timestamp, end_timestamp)
+
+    # Save metrics to database if enabled
+    if args.enable_database_push:
+        save_to_sql(args, metrics_result, percentile_result, start_timestamp, end_timestamp)
+
+    return metrics_result, percentile_result
+
+
+def save_to_prometheus(args: Arguments, metrics_result: dict, percentile_result: dict, prometheus_metrics: dict, start_timestamp: float, end_timestamp: float):
     base_labels = {
         'model': args.model_id,
         'concurrency': str(args.parallel),
@@ -80,28 +91,10 @@ def run_one_benchmark(args: Arguments, output_path: str = None, prometheus_metri
         'pd': args.pd if args.pd is not None else '',
         'metadata': args.metadata if args.metadata is not None else '',
     }
-
-    # Push metrics to Prometheus if enabled and prometheus_metrics are provided
-    if args.enable_prometheus_metrics and prometheus_metrics:
-        _push_metrics_to_prometheus(args, metrics_result, percentile_result, prometheus_metrics, start_timestamp, end_timestamp, base_labels)
-
-    # Save metrics to database if enabled
-    if args.enable_database_push:
-        flat_percentiles = _restructure_percentiles(percentile_result)
-        db_metrics = {
-            **base_labels,
-            **metrics_result,
-            **flat_percentiles,  # Merge the flattened percentile data
-            'start_timestamp': start_timestamp,
-            'end_timestamp': end_timestamp
-        }
-        save_to_mysql(args, db_metrics)
-
-    return metrics_result, percentile_result
-
+    _push_metrics_to_prometheus(args, metrics_result, percentile_result, prometheus_metrics, start_timestamp, end_timestamp, base_labels)
 
 # _push_metrics_to_prometheus no longer needs pipeline_run_id
-def _push_metrics_to_prometheus(args: Arguments, metrics_result: dict, percentile_result: dict, prometheus_metrics: dict, start_timestamp: float, end_timestamp: float):
+def _push_metrics_to_prometheus(args: Arguments, metrics_result: dict, percentile_result: dict, prometheus_metrics: dict, start_timestamp: float, end_timestamp: float, base_labels: dict):
     if not args.enable_prometheus_metrics or not args.prometheus_pushgateway_url:
         return
 
