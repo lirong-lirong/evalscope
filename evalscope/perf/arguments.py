@@ -79,6 +79,7 @@ class Arguments(BaseArgument):
     tp: Optional[int] = None  # Example: Tensor Parallelism
     pd: Optional[str] = None  # Example: Parallelism Distribution strategy
     metadata: Optional[str] = None
+    engine: Optional[str] = None
 
     # Prometheus settings
     prometheus_pushgateway_url: Optional[str] = None  # URL for Prometheus Pushgateway
@@ -93,6 +94,7 @@ class Arguments(BaseArgument):
     db_user: Optional[str] = None
     db_password: Optional[str] = None
     db_name: Optional[str] = None
+    db_table_name: Optional[str] = 'perf_results'  # The name of the table to store results
 
     def __post_init__(self):
         # Set the default headers
@@ -216,7 +218,8 @@ def add_argument(parser: argparse.ArgumentParser):
     parser.add_argument('--dp', type=int, default=None, help='Custom parameter: Data Parallelism')
     parser.add_argument('--tp', type=int, default=None, help='Custom parameter: Tensor Parallelism')
     parser.add_argument('--pd', type=str, default=None, help='Custom parameter: Parallelism Distribution strategy')
-
+    parser.add_argument('--engine', type=str, default=None, help='Custom parameter: Engine')
+    
     # Prometheus settings
     parser.add_argument('--prometheus-pushgateway-url', type=str, default=None, help='URL for Prometheus Pushgateway')
     parser.add_argument('--enable-prometheus-metrics', action='store_true', default=False, help='Enable pushing metrics to Prometheus Pushgateway')
@@ -230,6 +233,7 @@ def add_argument(parser: argparse.ArgumentParser):
     parser.add_argument('--db-user', type=str, default=None, help='Database user')
     parser.add_argument('--db-password', type=str, default=None, help='Database password')
     parser.add_argument('--db-name', type=str, default=None, help='Database name')
+    parser.add_argument('--db-table-name', type=str, default='perf_results', help='The name of the table to store results')
     # yapf: enable
 
 

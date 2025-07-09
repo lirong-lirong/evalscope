@@ -348,11 +348,15 @@ def save_to_sql(args: Arguments, metrics_result: dict, percentile_result: dict, 
         'model': args.model_id,
         'concurrency': str(args.parallel),
         'dataset': args.dataset,
-        'ep': str(args.ep) if args.ep is not None else '',
-        'dp': str(args.dp) if args.dp is not None else '',
-        'tp': str(args.tp) if args.tp is not None else '',
-        'pd': args.pd if args.pd is not None else '',
-        'metadata': args.metadata if args.metadata is not None else '',
+        'ep': str(args.ep) if args.ep is not None else 'unkown',
+        'dp': str(args.dp) if args.dp is not None else 'unkown',
+        'tp': str(args.tp) if args.tp is not None else 'unkown',
+        'pd': args.pd if args.pd is not None else 'unkown',
+        'metadata': args.metadata if args.metadata is not None else 'unkown',
+        'engine': args.engine if args.engine is not None else 'unkown',
+        'ISL': args.max_prompt_length, 
+        'OSL': args.min_tokens,
+        'ignore_eos': args.extra_args['ignore_eos'] if (args.extra_args and 'ignore_eos' in args.extra_args) else 'False',
     }
     flat_percentiles = _restructure_percentiles(percentile_result)
     db_metrics = {
@@ -364,22 +368,30 @@ def save_to_sql(args: Arguments, metrics_result: dict, percentile_result: dict, 
     }
     save_to_mysql(args, db_metrics)
     
+def _get_existing_columns(cursor, table_name: str) -> set:
+    """Fetches the set of existing column names for a given table."""
+    try:
+        cursor.execute(f"DESCRIBE `{table_name}`")
+        return {row[0] for row in cursor.fetchall()}
+    except Exception as e:
+        # This can happen if the table doesn't exist yet, which is fine.
+        if "doesn't exist" in str(e):
+            return set()
+        raise e
+
 def save_to_mysql(args: Arguments, data: dict):
     """
-    Saves benchmark data to a MySQL database, creating a new table for each run
-    based on the metadata.
+    Saves benchmark data to a fixed table in a MySQL database,
+    dynamically adding new columns as needed.
     """
-    if not args.metadata:
-        logger.error("Cannot save to database: --metadata is required for table naming.")
-        return
+    # Use a fixed table name from args instead of a dynamic one
+    table_name = args.db_table_name
+    
+    # Add metadata to the data dictionary to be inserted as a column
+    if args.metadata:
+        data['metadata'] = args.metadata
 
-    # Sanitize metadata to create a valid table name
-    table_name = re.sub(r'[^0-9a-zA-Z_]', '', args.metadata)
-    if not table_name:
-        logger.error(f"Invalid metadata '{args.metadata}' resulted in an empty table name.")
-        return
-
-    logger.info(f"Attempting to save results to MySQL table: {table_name}")
+    logger.info(f"Attempting to save results to MySQL table: `{table_name}`")
 
     connection = _get_mysql_connection(args)
     if not connection:
@@ -390,12 +402,24 @@ def save_to_mysql(args: Arguments, data: dict):
 
         # Flatten the data for a flat table structure
         flat_data = _flatten_dict(data)
+        
+        # Get existing columns and find new ones
+        existing_columns = _get_existing_columns(cursor, table_name)
+        new_columns = set(flat_data.keys()) - existing_columns
 
-        # Dynamically create the CREATE TABLE IF NOT EXISTS statement
-        columns_defs = [f"`{col}` {_get_sql_type(val)}" for col, val in flat_data.items()]
-        create_table_sql = f"CREATE TABLE IF NOT EXISTS `{table_name}` ({ ', '.join(columns_defs) })"
-        logger.debug(f"Executing CREATE TABLE: {create_table_sql}")
-        cursor.execute(create_table_sql)
+        # If the table doesn't exist, create it
+        if not existing_columns:
+            columns_defs = [f"`{col}` {_get_sql_type(val)}" for col, val in flat_data.items()]
+            create_table_sql = f"CREATE TABLE `{table_name}` ({', '.join(columns_defs)})"
+            logger.debug(f"Table `{table_name}` not found. Executing CREATE TABLE: {create_table_sql}")
+            cursor.execute(create_table_sql)
+        # If there are new columns, add them to the existing table
+        elif new_columns:
+            for col in new_columns:
+                col_type = _get_sql_type(flat_data[col])
+                alter_table_sql = f"ALTER TABLE `{table_name}` ADD COLUMN `{col}` {col_type}"
+                logger.debug(f"Found new column. Executing ALTER TABLE: {alter_table_sql}")
+                cursor.execute(alter_table_sql)
 
         # Dynamically create the INSERT statement
         columns = '`, `'.join(flat_data.keys())
@@ -409,7 +433,8 @@ def save_to_mysql(args: Arguments, data: dict):
 
     except Exception as e:
         logger.error(f"Failed to save data to MySQL: {e}")
-        connection.rollback()
+        if connection.is_connected():
+            connection.rollback()
     finally:
         if connection.is_connected():
             cursor.close()
